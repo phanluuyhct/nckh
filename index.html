@@ -155,6 +155,7 @@ textarea{resize:vertical;min-height:56px}
 
   <!-- TAB DASHBOARD -->
   <div class="tab-panel active" id="tab-dashboard">
+    <div id="reminderBox"></div>
     <div class="stats-row" id="statsRow"></div>
     <div class="chart-row">
       <div class="card">
@@ -169,6 +170,10 @@ textarea{resize:vertical;min-height:56px}
     <div class="card">
       <h2>📈 Số đề tài theo năm kế hoạch</h2>
       <div class="bar-list" id="chartNam"></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>🔬 Hoạt động khoa học khác</h2>
+      <div class="stats-row" id="extraStatsRow"><div class="muted">Đang tải...</div></div>
     </div>
   </div>
 
@@ -296,7 +301,7 @@ textarea{resize:vertical;min-height:56px}
         </div>
         <div class="form-group"><label>Mã số đề tài</label><input id="dt_maso"></div>
         <div class="form-group"><label>Năm kế hoạch</label><input type="number" id="dt_namkh"></div>
-        <div class="form-group"><label>Năm nghiệm thu</label><input type="number" id="dt_namnt"></div>
+        <div class="form-group"><label>Năm nghiệm thu <span style="font-weight:400;color:#888;font-size:12px">(tự tính từ ngày NT)</span></label><input type="number" id="dt_namnt" readonly style="background:#f3f4f6"></div>
         <div class="form-group"><label>Chủ nhiệm</label><input id="dt_chunhiem"></div>
         <div class="form-group"><label>Thư ký</label><input id="dt_thuky"></div>
         <div class="form-group full"><label>Thành viên tham gia</label><input id="dt_thanhvien"></div>
@@ -430,6 +435,7 @@ textarea{resize:vertical;min-height:56px}
 <script>
 let allDeTai = [];
 let noiDungCache = {}; // de_tai_id -> array
+let allNoiDung = [];   // toàn bộ nội dung/tiến độ (tab NoiDung)
 let statFilter = null; // bộ lọc nhanh khi bấm vào ô số ở Dashboard
 
 /* ===== ĐỒNG BỘ GOOGLE SHEET "DSDeTai" ===== */
@@ -466,8 +472,8 @@ function sheetToDeTai(row){
 function deTaiToSheet(b){
   return {
     'Năm kế hoạch': b.nam_ke_hoach || '',
-    'Năm nghiệm thu': b.nam_nghiem_thu || '',
     'Cấp quản lý': b.cap_quan_ly || '',
+    // 'Năm nghiệm thu' KHÔNG gửi lên: cột này do công thức ARRAYFORMULA trong Sheet tự tính
     'Mã số đề tài': b.ma_so || '',
     'Tên đề tài': b.ten_de_tai || '',
     'Họ tên chủ nhiệm': b.chu_nhiem || '',
@@ -488,16 +494,96 @@ function deTaiToSheet(b){
 
 // Gửi POST kiểu text/plain để tránh lỗi CORS preflight với Apps Script
 async function sheetPost(payload){
-  const r = await fetch(SHEET_API, { method:'POST', body: JSON.stringify(payload) });
-  const j = await r.json();
-  if(!j.ok) throw new Error(j.error || 'Lỗi khi ghi Google Sheet');
-  return j;
+  try{
+    const r = await fetch(SHEET_API, { method:'POST', body: JSON.stringify(payload) });
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error || 'Lỗi khi ghi Google Sheet');
+    return j;
+  }catch(err){
+    // Apps Script thường GHI THÀNH CÔNG nhưng phản hồi bị chặn CORS -> "Failed to fetch".
+    // KHÔNG gửi lại (tránh ghi trùng); coi như đã ghi, bước tải lại danh sách sẽ xác nhận thực tế.
+    if(String((err && err.message) || err).indexOf('Failed to fetch') >= 0){
+      return { ok:true, unconfirmed:true };
+    }
+    throw err;
+  }
 }
 
 // Lấy năm (4 số) từ chuỗi ngày bất kỳ: "09/4/2026", "2026-04-09", ISO...
 function extractYear(s){
   const m = String(s || '').match(/(19|20)\d{2}/);
   return m ? m[0] : '';
+}
+
+// Chuyển tab theo tên (dùng cho link ở Dashboard)
+function goTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  const tb = document.querySelector('.tab[data-tab="'+name+'"]');
+  const pn = document.getElementById('tab-'+name);
+  if(tb) tb.classList.add('active');
+  if(pn) pn.classList.add('active');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+// Thống kê nhanh các nhóm khác trên Dashboard (bấm để mở nhóm tương ứng)
+function renderExtraStats(){
+  const el = document.getElementById('extraStatsRow');
+  if(!el) return;
+  el.innerHTML = `
+    <div class="stat-card blue" style="cursor:pointer" title="Xem danh sách bài báo" onclick="goTab('baibao')"><div class="stat-num">${allBaiBao.length}</div><div class="stat-label">📄 Bài báo khoa học</div></div>
+    <div class="stat-card green" style="cursor:pointer" title="Xem đề tài SV/HV" onclick="goTab('sinhvien')"><div class="stat-num">${allSinhVien.length}</div><div class="stat-label">🎓 Đề tài SV/HV</div></div>
+    <div class="stat-card orange" style="cursor:pointer" title="Xem sinh hoạt khoa học" onclick="goTab('shkh')"><div class="stat-num">${allShkh.length}</div><div class="stat-label">🗣️ Sinh hoạt khoa học</div></div>
+  `;
+}
+
+// Đọc ngày dạng dd/mm/yyyy, yyyy-mm-dd, ISO...
+function parseVNDate(s){
+  if(!s) return null;
+  s = String(s).trim();
+  let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if(m) return new Date(+m[3], +m[2]-1, +m[1]);
+  m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Bảng NHẮC HẠN Hợp đồng khoán việc (dựa trên Thời gian kết thúc của nội dung/HĐKV)
+const REMINDER_LEAD_DAYS = 15;
+function renderReminders(){
+  const box = document.getElementById('reminderBox');
+  if(!box) return;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const rows = [];
+  allNoiDung.forEach(n=>{
+    const de = allDeTai.find(x=>x.id===n.de_tai_id);
+    if(de && de.tinh_trang === 'Đã nghiệm thu') return; // đề tài đã nghiệm thu -> coi như đã xong
+    const end = parseVNDate(n.thoi_gian_ket_thuc);
+    if(!end) return;
+    const days = Math.round((end - today)/86400000);
+    if(days <= REMINDER_LEAD_DAYS){
+      rows.push({ n, days, deLabel: de ? (de.ma_de_tai+' — '+de.ten_de_tai) : ('Đề tài #'+n.de_tai_id) });
+    }
+  });
+  rows.sort((a,b)=>a.days-b.days);
+  if(!rows.length){ box.innerHTML=''; return; }
+  box.innerHTML = `
+    <div class="card" style="border-left:5px solid #dc2626;margin-bottom:16px;background:#fff7f7">
+      <h2 style="color:#b91c1c">⏰ Nhắc hạn Hợp đồng khoán việc (${rows.length})</h2>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        ${rows.map(it=>{
+          const overdue = it.days < 0;
+          const label = overdue
+            ? `<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;white-space:nowrap">Đã hết hạn ${Math.abs(it.days)} ngày · cần THANH LÝ</span>`
+            : `<span style="background:#fef9c3;color:#854d0e;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;white-space:nowrap">Còn ${it.days} ngày · chuẩn bị ký HĐ MỚI</span>`;
+          return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #f3e0e0;padding-bottom:6px">
+            <div><b>${it.deLabel}</b><div class="muted" style="font-size:12px">${it.n.noi_dung||''} · HĐKV ${it.n.so_hdkv||'—'} · kết thúc ${it.n.thoi_gian_ket_thuc}</div></div>
+            ${label}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
 }
 
 // Tải lại NHANH: chỉ nạp lại danh sách đề tài (bỏ qua các mục phụ) → lưu nhanh hơn
@@ -507,6 +593,7 @@ async function reloadDeTaiOnly(){
     const r = await fetch(SHEET_API + '?action=list');
     const j = await r.json();
     allDeTai = (j.data || []).map(sheetToDeTai);
+    try{ localStorage.setItem('nckh_detai', JSON.stringify(allDeTai)); }catch(e){}
     populateFilterOptions();
     renderDashboard();
     renderDanhMuc();
@@ -516,17 +603,32 @@ async function reloadDeTaiOnly(){
 function setLoading(v){ document.getElementById('globalLoading').classList.toggle('show', v); }
 
 async function loadDeTai(){
-  setLoading(true);
+  // Hiện NGAY dữ liệu đã lưu trong máy (nếu có) -> khỏi phải chờ Google Sheet
+  try{
+    const cached = localStorage.getItem('nckh_detai');
+    if(cached){
+      allDeTai = JSON.parse(cached);
+      populateFilterOptions();
+      renderDashboard();
+      renderDanhMuc();
+    }
+  }catch(e){}
+  // Tải bản mới nhất từ Google Sheet (chỉ hiện spinner nếu chưa có gì để xem)
+  if(!allDeTai.length) setLoading(true);
   try{
     const r = await fetch(SHEET_API + '?action=list');
     const j = await r.json();
     allDeTai = (j.data || []).map(sheetToDeTai);
+    try{ localStorage.setItem('nckh_detai', JSON.stringify(allDeTai)); }catch(e){}
     populateFilterOptions();
     renderDashboard();
     renderDanhMuc();
-    try{ await renderTienDo(); }catch(e){ console.warn('Tiến độ:', e); }
-    await Promise.allSettled([loadBaiBao(), loadSinhVien(), loadShkh()]);
   } finally { setLoading(false); }
+  // Các mục phụ nạp NGẦM phía sau, không chặn hiển thị danh mục đề tài
+  loadAllNoiDung().then(()=>{ renderReminders(); renderTienDo(); }).catch(()=>{});
+  loadBaiBao().catch(()=>{});
+  loadSinhVien().catch(()=>{});
+  loadShkh().catch(()=>{});
 }
 
 function populateFilterOptions(){
@@ -834,21 +936,24 @@ async function renderTienDo(){
     </div>
   `).join('');
 
-  for(const d of dsTrienKhai){
-    try{ await loadNoiDungFor(d.id); }
-    catch(e){
-      const el = document.getElementById('dp-list-'+d.id);
-      if(el) el.innerHTML = '<div class="muted">Phần nội dung/tiến độ chưa được kết nối Google Sheet.</div>';
-      const p = document.getElementById('dp-pct-'+d.id); if(p) p.textContent = '—';
-    }
-  }
+  for(const d of dsTrienKhai){ renderNoiDungFor(d.id); }
 }
 
-async function loadNoiDungFor(deTaiId){
-  const r = await fetch('/api/detaikh-noidung?de_tai_id='+deTaiId);
-  const j = await r.json();
-  noiDungCache[deTaiId] = j.data || [];
-  const items = noiDungCache[deTaiId];
+async function loadAllNoiDung(){
+  try{
+    const r = await fetch(SHEET_API + '?entity=noidung&action=list');
+    const j = await r.json();
+    allNoiDung = (j.data || []).map(x => ({
+      ...x,
+      id: Number(x.ID) || x.ID,
+      de_tai_id: (x.de_tai_id === '' || x.de_tai_id == null) ? null : Number(x.de_tai_id)
+    }));
+  }catch(e){ allNoiDung = []; }
+}
+
+function renderNoiDungFor(deTaiId){
+  const items = allNoiDung.filter(n => n.de_tai_id === deTaiId);
+  noiDungCache[deTaiId] = items;
   const total = items.length;
   const done = items.filter(n=>n.tien_do==='Hoàn thành').length;
   const pct = total ? Math.round(done/total*100) : 0;
@@ -923,16 +1028,15 @@ async function saveNoiDung(e){
   };
   setLoading(true);
   try{
-    if(id){
-      body.id = Number(id);
-      await fetch('/api/detaikh-noidung', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    } else {
-      await fetch('/api/detaikh-noidung', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    }
+    if(id){ await sheetPost({ entity:'noidung', action:'update', id:Number(id), record: body }); }
+    else { await sheetPost({ entity:'noidung', action:'add', record: body }); }
     closeNoiDungModal();
-    await loadNoiDungFor(Number(deTaiId));
-    document.getElementById('dp-body-'+deTaiId).classList.add('show');
-  } finally { setLoading(false); }
+    await loadAllNoiDung();
+    renderNoiDungFor(Number(deTaiId));
+    renderReminders();
+    const b = document.getElementById('dp-body-'+deTaiId); if(b) b.classList.add('show');
+  } catch(err){ alert('Lỗi khi lưu nội dung: ' + err.message); }
+  finally { setLoading(false); }
   return false;
 }
 
@@ -940,9 +1044,12 @@ async function deleteNoiDung(id, deTaiId){
   if(!confirm('Xóa nội dung công việc này?')) return;
   setLoading(true);
   try{
-    await fetch('/api/detaikh-noidung?id='+id, { method:'DELETE' });
-    await loadNoiDungFor(deTaiId);
-  } finally { setLoading(false); }
+    await sheetPost({ entity:'noidung', action:'delete', id:Number(id) });
+    await loadAllNoiDung();
+    renderNoiDungFor(deTaiId);
+    renderReminders();
+  } catch(err){ alert('Lỗi khi xóa: ' + err.message); }
+  finally { setLoading(false); }
 }
 
 /* ===== BAI BAO KHOA HOC ===== */
@@ -950,9 +1057,13 @@ let allBaiBao = [];
 
 async function loadBaiBao(){
   try{
-    const r = await fetch('/api/detaikh-baibao');
+    const r = await fetch(SHEET_API + '?entity=baibao&action=list');
     const j = await r.json();
-    allBaiBao = j.data || [];
+    allBaiBao = (j.data || []).map(x => ({
+      ...x,
+      id: Number(x.ID) || x.ID,
+      de_tai_id: (x.de_tai_id === '' || x.de_tai_id == null) ? null : Number(x.de_tai_id)
+    }));
   }catch(e){ allBaiBao = []; }
   const bbDeTaiSelect = document.getElementById('bb_detaiid');
   bbDeTaiSelect.innerHTML = '<option value="">-- Không liên kết đề tài --</option>' +
@@ -960,6 +1071,7 @@ async function loadBaiBao(){
   const nams = [...new Set(allBaiBao.map(x=>x.nam).filter(Boolean))].sort((a,b)=>b-a);
   document.getElementById('bbNam').innerHTML = '<option value="">-- Năm --</option>' + nams.map(n=>`<option>${n}</option>`).join('');
   renderBaiBao();
+  renderExtraStats();
 }
 
 function getDeTaiLabel(deTaiId){
@@ -1066,18 +1178,20 @@ async function saveBaiBao(e){
   };
   setLoading(true);
   try{
-    if(id){ body.id = Number(id); await fetch('/api/detaikh-baibao', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }); }
-    else { await fetch('/api/detaikh-baibao', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }); }
+    if(id){ await sheetPost({ entity:'baibao', action:'update', id:Number(id), record: body }); }
+    else { await sheetPost({ entity:'baibao', action:'add', record: body }); }
     closeBaiBaoModal();
     await loadBaiBao();
-  } finally { setLoading(false); }
+  } catch(err){ alert('Lỗi khi lưu Bài báo: ' + err.message); }
+  finally { setLoading(false); }
   return false;
 }
 
 async function deleteBaiBao(id){
   if(!confirm('Xóa bài báo này?')) return;
   setLoading(true);
-  try{ await fetch('/api/detaikh-baibao?id='+id, { method:'DELETE' }); await loadBaiBao(); }
+  try{ await sheetPost({ entity:'baibao', action:'delete', id:Number(id) }); await loadBaiBao(); }
+  catch(err){ alert('Lỗi khi xóa: ' + err.message); }
   finally { setLoading(false); }
 }
 
@@ -1099,13 +1213,14 @@ let allSinhVien = [];
 
 async function loadSinhVien(){
   try{
-    const r = await fetch('/api/detaikh-sv');
+    const r = await fetch(SHEET_API + '?entity=sinhvien&action=list');
     const j = await r.json();
-    allSinhVien = j.data || [];
+    allSinhVien = (j.data || []).map(x => ({ ...x, id: Number(x.ID) || x.ID }));
   }catch(e){ allSinhVien = []; }
   const nams = [...new Set(allSinhVien.map(x=>x.nam).filter(Boolean))].sort((a,b)=>b-a);
   document.getElementById('svNam').innerHTML = '<option value="">-- Năm --</option>' + nams.map(n=>`<option>${n}</option>`).join('');
   renderSinhVien();
+  renderExtraStats();
 }
 
 function getSinhVienFiltered(){
@@ -1189,18 +1304,20 @@ async function saveSinhVien(e){
   };
   setLoading(true);
   try{
-    if(id){ body.id = Number(id); await fetch('/api/detaikh-sv', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }); }
-    else { await fetch('/api/detaikh-sv', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }); }
+    if(id){ await sheetPost({ entity:'sinhvien', action:'update', id:Number(id), record: body }); }
+    else { await sheetPost({ entity:'sinhvien', action:'add', record: body }); }
     closeSinhVienModal();
     await loadSinhVien();
-  } finally { setLoading(false); }
+  } catch(err){ alert('Lỗi khi lưu Đề tài SV/HV: ' + err.message); }
+  finally { setLoading(false); }
   return false;
 }
 
 async function deleteSinhVien(id){
   if(!confirm('Xóa đề tài SV/HV này?')) return;
   setLoading(true);
-  try{ await fetch('/api/detaikh-sv?id='+id, { method:'DELETE' }); await loadSinhVien(); }
+  try{ await sheetPost({ entity:'sinhvien', action:'delete', id:Number(id) }); await loadSinhVien(); }
+  catch(err){ alert('Lỗi khi xóa: ' + err.message); }
   finally { setLoading(false); }
 }
 
@@ -1223,13 +1340,14 @@ let allShkh = [];
 
 async function loadShkh(){
   try{
-    const r = await fetch('/api/detaikh-shkh');
+    const r = await fetch(SHEET_API + '?entity=shkh&action=list');
     const j = await r.json();
-    allShkh = j.data || [];
+    allShkh = (j.data || []).map(x => ({ ...x, id: Number(x.ID) || x.ID }));
   }catch(e){ allShkh = []; }
   const nams = [...new Set(allShkh.map(x=>x.nam).filter(Boolean))].sort((a,b)=>b-a);
   document.getElementById('shkhNam').innerHTML = '<option value="">-- Năm --</option>' + nams.map(n=>`<option>${n}</option>`).join('');
   renderShkh();
+  renderExtraStats();
 }
 
 function getShkhFiltered(){
@@ -1311,18 +1429,20 @@ async function saveShkh(e){
   };
   setLoading(true);
   try{
-    if(id){ body.id = Number(id); await fetch('/api/detaikh-shkh', { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }); }
-    else { await fetch('/api/detaikh-shkh', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }); }
+    if(id){ await sheetPost({ entity:'shkh', action:'update', id:Number(id), record: body }); }
+    else { await sheetPost({ entity:'shkh', action:'add', record: body }); }
     closeShkhModal();
     await loadShkh();
-  } finally { setLoading(false); }
+  } catch(err){ alert('Lỗi khi lưu Sinh hoạt KH: ' + err.message); }
+  finally { setLoading(false); }
   return false;
 }
 
 async function deleteShkh(id){
   if(!confirm('Xóa buổi sinh hoạt này?')) return;
   setLoading(true);
-  try{ await fetch('/api/detaikh-shkh?id='+id, { method:'DELETE' }); await loadShkh(); }
+  try{ await sheetPost({ entity:'shkh', action:'delete', id:Number(id) }); await loadShkh(); }
+  catch(err){ alert('Lỗi khi xóa: ' + err.message); }
   finally { setLoading(false); }
 }
 
