@@ -449,7 +449,7 @@ function sheetToDeTai(row){
     ma_de_tai: ma,
     ma_so: ma,
     ten_de_tai: row['Tên đề tài'] || '',
-    cap_quan_ly: row['Cấp quản lý'] || '',
+    cap_quan_ly: String(row['Cấp quản lý'] || '').trim().replace(/\s+/g, ' '),
     nam_ke_hoach: row['Năm kế hoạch'] || '',
     nam_nghiem_thu: row['Năm nghiệm thu'] || '',
     chu_nhiem: row['Họ tên chủ nhiệm'] || '',
@@ -695,7 +695,7 @@ function renderDashboard(){
   // Theo năm
   const namCount = {};
   allDeTai.forEach(d=>{ const n = d.nam_ke_hoach || '?'; namCount[n]=(namCount[n]||0)+1; });
-  const years = Object.keys(namCount).sort();
+  const years = Object.keys(namCount).sort((a,b)=>{ if(a==='?') return 1; if(b==='?') return -1; return Number(b)-Number(a); });
   const maxNam = Math.max(...Object.values(namCount), 1);
   document.getElementById('chartNam').innerHTML = years.map(y=>`
     <div class="bar-item" onclick="goToDanhMuc('fNam','${y==='?'?'':y}')" title="Xem danh sách đề tài năm ${y}"><div class="bar-label">${y}</div><div class="bar-track"><div class="bar-fill" style="width:${namCount[y]/maxNam*100}%"></div></div><div class="bar-num">${namCount[y]}</div></div>
@@ -867,11 +867,17 @@ async function saveDeTai(e){
     const record = deTaiToSheet(body);
     if(id){
       await sheetPost({ action:'update', id: Number(id), record });
+      // Cập nhật NGAY tại chỗ (không tải lại toàn bộ từ Sheet) -> nhanh
+      const ex = allDeTai.find(x=>x.id===Number(id));
+      if(ex) Object.assign(ex, body, { id: Number(id), ma_de_tai: body.ma_so });
+      try{ localStorage.setItem('nckh_detai', JSON.stringify(allDeTai)); }catch(e){}
+      closeDeTaiModal();
+      populateFilterOptions(); renderDashboard(); renderDanhMuc();
     } else {
       await sheetPost({ action:'add', record });
+      closeDeTaiModal();
+      await reloadDeTaiOnly(); // thêm mới -> tải lại để lấy ID chính xác
     }
-    closeDeTaiModal();
-    await reloadDeTaiOnly();
   } catch(err){
     alert('Lỗi khi lưu về Google Sheet: ' + err.message);
   } finally { setLoading(false); }
