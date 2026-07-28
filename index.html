@@ -555,34 +555,35 @@ function renderReminders(){
   const box = document.getElementById('reminderBox');
   if(!box) return;
   const today = new Date(); today.setHours(0,0,0,0);
-  const doneMa = new Set(allDeTai.filter(d=>d.tinh_trang==='Đã nghiệm thu').map(d=>String(d.ma_so||'').trim()));
   const rows = [];
   allNoiDung.forEach(n=>{
-    if(n.ma_so && doneMa.has(String(n.ma_so).trim())) return; // đề tài đã nghiệm thu -> bỏ
+    if(String(n.tien_do||'').trim() === 'Hoàn thành') return; // đã hoàn thành -> không cần nhắc
     const end = parseVNDate(n.thoi_gian_ket_thuc);
     if(!end) return;
     const days = Math.round((end - today)/86400000);
     if(days <= REMINDER_LEAD_DAYS){
-      rows.push({ n, days, deLabel: n.ten_de_tai || ('Đề tài ' + (n.de_tai_id||'')) });
+      rows.push({ n, days, deLabel: n.ten_de_tai || n.ma_so || ('Đề tài ' + (n.de_tai_id||'')) });
     }
   });
   rows.sort((a,b)=>a.days-b.days);
-  if(!rows.length){ box.innerHTML=''; return; }
-  box.innerHTML = `
-    <div class="card" style="border-left:5px solid #dc2626;margin-bottom:16px;background:#fff7f7">
-      <h2 style="color:#b91c1c">⏰ Nhắc hạn Hợp đồng khoán việc (${rows.length})</h2>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+  const body = rows.length
+    ? `<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
         ${rows.map(it=>{
           const overdue = it.days < 0;
           const label = overdue
             ? `<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;white-space:nowrap">Đã hết hạn ${Math.abs(it.days)} ngày · cần THANH LÝ</span>`
             : `<span style="background:#fef9c3;color:#854d0e;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;white-space:nowrap">Còn ${it.days} ngày · chuẩn bị ký HĐ MỚI</span>`;
           return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #f3e0e0;padding-bottom:6px">
-            <div><b>${it.deLabel}</b><div class="muted" style="font-size:12px">${it.n.noi_dung||''} · HĐKV ${it.n.so_hdkv||'—'} · kết thúc ${it.n.thoi_gian_ket_thuc}</div></div>
+            <div><b>${it.deLabel}</b><div class="muted" style="font-size:12px">${it.n.noi_dung||''} · HĐKV ${it.n.so_hdkv||'—'} · kết thúc ${it.n.thoi_gian_ket_thuc||'—'}</div></div>
             ${label}
           </div>`;
         }).join('')}
-      </div>
+      </div>`
+    : `<div class="muted" style="margin-top:6px">Hiện không có HĐKV nào sắp/đã hết hạn cần xử lý (trong 15 ngày tới, hoặc đã quá hạn mà chưa "Hoàn thành").</div>`;
+  box.innerHTML = `
+    <div class="card" style="border-left:5px solid ${rows.length?'#dc2626':'#94a3b8'};margin-bottom:16px;background:${rows.length?'#fff7f7':'#f8fafc'}">
+      <h2 style="color:${rows.length?'#b91c1c':'#475569'}">⏰ Nhắc hạn Hợp đồng khoán việc ${rows.length?('('+rows.length+')'):''}</h2>
+      ${body}
     </div>`;
 }
 
