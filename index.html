@@ -342,7 +342,7 @@ textarea{resize:vertical;min-height:56px}
         <div class="form-group"><label>Thời gian bắt đầu</label><input id="nd_batdau" placeholder="dd/mm/yyyy"></div>
         <div class="form-group"><label>Thời gian kết thúc</label><input id="nd_ketthuc" placeholder="dd/mm/yyyy"></div>
         <div class="form-group"><label>Tiến độ</label>
-          <select id="nd_tiendo"><option value="">--</option><option>Chưa triển khai</option><option>Đang triển khai</option><option>Hoàn thành</option></select>
+          <select id="nd_tiendo"><option value="">--</option><option>Chưa triển khai</option><option>Đang triển khai</option><option>Hoàn thành</option><option>Đã thanh lý</option></select>
         </div>
         <div class="form-group full"><label>Ghi chú</label><textarea id="nd_ghichu"></textarea></div>
       </div>
@@ -436,6 +436,7 @@ textarea{resize:vertical;min-height:56px}
 let allDeTai = [];
 let noiDungCache = {}; // de_tai_id -> array
 let allNoiDung = [];   // toàn bộ nội dung/tiến độ (tab NoiDung)
+let reminderList = []; // các mục HĐKV đang được nhắc (để bấm vào cập nhật)
 let statFilter = null; // bộ lọc nhanh khi bấm vào ô số ở Dashboard
 
 /* ===== ĐỒNG BỘ GOOGLE SHEET "DSDeTai" ===== */
@@ -557,7 +558,8 @@ function renderReminders(){
   const today = new Date(); today.setHours(0,0,0,0);
   const rows = [];
   allNoiDung.forEach(n=>{
-    if(String(n.tien_do||'').trim() === 'Hoàn thành') return; // đã hoàn thành -> không cần nhắc
+    const td = String(n.tien_do||'').trim();
+    if(td === 'Hoàn thành' || td === 'Đã thanh lý') return; // đã xong/thanh lý -> không cần nhắc
     const end = parseVNDate(n.thoi_gian_ket_thuc);
     if(!end) return;
     const days = Math.round((end - today)/86400000);
@@ -566,14 +568,15 @@ function renderReminders(){
     }
   });
   rows.sort((a,b)=>a.days-b.days);
+  reminderList = rows.map(r=>r.n);
   const body = rows.length
-    ? `<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
-        ${rows.map(it=>{
+    ? `<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+        ${rows.map((it,idx)=>{
           const overdue = it.days < 0;
           const label = overdue
             ? `<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;white-space:nowrap">Đã hết hạn ${Math.abs(it.days)} ngày · cần THANH LÝ</span>`
             : `<span style="background:#fef9c3;color:#854d0e;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;white-space:nowrap">Còn ${it.days} ngày · chuẩn bị ký HĐ MỚI</span>`;
-          return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #f3e0e0;padding-bottom:6px">
+          return `<div onclick="openNoiDungReminder(${idx})" title="Bấm để cập nhật tình trạng HĐKV" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #f3e0e0;padding:6px;border-radius:6px" onmouseover="this.style.background='#fdeaea'" onmouseout="this.style.background=''">
             <div><b>${it.deLabel}</b><div class="muted" style="font-size:12px">${it.n.noi_dung||''} · HĐKV ${it.n.so_hdkv||'—'} · kết thúc ${it.n.thoi_gian_ket_thuc||'—'}</div></div>
             ${label}
           </div>`;
@@ -983,8 +986,8 @@ function renderNoiDungFor(deTaiId){
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
         ${badgeHtml(n.tien_do)}
         <div class="action-btns">
-          <button class="btn-act btn-act-edit" onclick="openNoiDungModal(${n.id}, ${deTaiId})">Sửa</button>
-          <button class="btn-act btn-act-del" onclick="deleteNoiDung(${n.id}, ${deTaiId})">Xóa</button>
+          <button class="btn-act btn-act-edit" onclick="openNoiDungModal('${n.id}', ${deTaiId})">Sửa</button>
+          <button class="btn-act btn-act-del" onclick="deleteNoiDung('${n.id}', ${deTaiId})">Xóa</button>
         </div>
       </div>
     </div>
@@ -1017,12 +1020,31 @@ function openNoiDungModal(id, deTaiId){
 }
 function closeNoiDungModal(){ document.getElementById('modalNoiDung').classList.remove('show'); }
 
+// Mở form cập nhật từ 1 mục nhắc hạn ở Dashboard
+function openNoiDungReminder(idx){
+  const n = reminderList[idx];
+  if(!n) return;
+  const f = document.getElementById('formNoiDung');
+  f.reset();
+  document.getElementById('nd_id').value = n.id != null ? n.id : '';
+  document.getElementById('nd_detaiid').value = n.de_tai_id != null ? n.de_tai_id : '';
+  document.getElementById('modalNoiDungTitle').innerHTML = `Cập nhật tình trạng HĐKV <button class="modal-close" onclick="closeNoiDungModal()">✕</button>`;
+  document.getElementById('nd_noidung').value = n.noi_dung||'';
+  document.getElementById('nd_sohdkv').value = n.so_hdkv||'';
+  document.getElementById('nd_ngaykyhdkv').value = n.ngay_ky_hdkv||'';
+  document.getElementById('nd_batdau').value = n.thoi_gian_bat_dau||'';
+  document.getElementById('nd_ketthuc').value = n.thoi_gian_ket_thuc||'';
+  document.getElementById('nd_tiendo').value = n.tien_do||'';
+  document.getElementById('nd_ghichu').value = n.ghi_chu||'';
+  document.getElementById('modalNoiDung').classList.add('show');
+}
+
 async function saveNoiDung(e){
   e.preventDefault();
   const id = document.getElementById('nd_id').value;
   const deTaiId = document.getElementById('nd_detaiid').value;
   const body = {
-    de_tai_id: Number(deTaiId),
+    de_tai_id: deTaiId,
     noi_dung: document.getElementById('nd_noidung').value,
     so_hdkv: document.getElementById('nd_sohdkv').value,
     ngay_ky_hdkv: document.getElementById('nd_ngaykyhdkv').value,
@@ -1033,7 +1055,7 @@ async function saveNoiDung(e){
   };
   setLoading(true);
   try{
-    if(id){ await sheetPost({ entity:'noidung', action:'update', id:Number(id), record: body }); }
+    if(id){ await sheetPost({ entity:'noidung', action:'update', id: id, record: body }); }
     else { await sheetPost({ entity:'noidung', action:'add', record: body }); }
     closeNoiDungModal();
     await loadAllNoiDung();
@@ -1049,7 +1071,7 @@ async function deleteNoiDung(id, deTaiId){
   if(!confirm('Xóa nội dung công việc này?')) return;
   setLoading(true);
   try{
-    await sheetPost({ entity:'noidung', action:'delete', id:Number(id) });
+    await sheetPost({ entity:'noidung', action:'delete', id: id });
     await loadAllNoiDung();
     renderNoiDungFor(deTaiId);
     renderReminders();
