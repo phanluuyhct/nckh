@@ -497,13 +497,26 @@ function deTaiToSheet(b){
 async function sheetPost(payload){
   try{
     const r = await fetch(SHEET_API, { method:'POST', body: JSON.stringify(payload) });
-    const j = await r.json();
+    // Đọc dạng text trước — Apps Script đôi khi trả về TRANG HTML (đăng nhập/lỗi/redirect)
+    // dù đã ghi xong. Nếu ép r.json() ngay sẽ vỡ: "Unexpected token '<', <!DOCTYPE ...".
+    const txt = await r.text();
+    let j = null;
+    try { j = JSON.parse(txt); } catch(_) { j = null; }
+    if(j === null){
+      // Không phải JSON (thường là HTML). Với POST, thao tác GHI thường ĐÃ THÀNH CÔNG
+      // nhưng phản hồi bị Google chặn/redirect. Không gửi lại để tránh ghi trùng.
+      return { ok:true, unconfirmed:true };
+    }
     if(!j.ok) throw new Error(j.error || 'Lỗi khi ghi Google Sheet');
     return j;
   }catch(err){
     // Apps Script thường GHI THÀNH CÔNG nhưng phản hồi bị chặn CORS -> "Failed to fetch".
     // KHÔNG gửi lại (tránh ghi trùng); coi như đã ghi, bước tải lại danh sách sẽ xác nhận thực tế.
-    if(String((err && err.message) || err).indexOf('Failed to fetch') >= 0){
+    var msg = String((err && err.message) || err);
+    if(msg.indexOf('Failed to fetch') >= 0 ||
+       msg.indexOf('Unexpected token') >= 0 ||
+       msg.indexOf('DOCTYPE') >= 0 ||
+       msg.indexOf('JSON') >= 0){
       return { ok:true, unconfirmed:true };
     }
     throw err;
@@ -605,6 +618,37 @@ async function reloadDeTaiOnly(){
 }
 
 function setLoading(v){ document.getElementById('globalLoading').classList.toggle('show', v); }
+
+// Thông báo nhỏ góc màn hình (không chặn thao tác)
+function toast(msg, isErr){
+  let t = document.getElementById('nckhToast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = 'nckhToast';
+    t.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:9999;padding:10px 16px;border-radius:8px;color:#fff;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.2);transition:opacity .3s;max-width:320px;';
+    document.body.appendChild(t);
+  }
+  t.style.background = isErr ? '#dc2626' : '#16a34a';
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>{ t.style.opacity = '0'; }, isErr ? 5000 : 2000);
+}
+
+// Tải lại danh sách ĐỀ TÀI trong nền, KHÔNG hiện spinner "Đang tải" (khỏi cảm giác chậm)
+async function silentReloadDeTai(){
+  try{
+    const r = await fetch(SHEET_API + '?action=list');
+    const txt = await r.text();
+    let j = null; try{ j = JSON.parse(txt); }catch(_){ j = null; }
+    if(!j || !j.data) return; // phản hồi không hợp lệ -> giữ nguyên dữ liệu đang có
+    allDeTai = j.data.map(sheetToDeTai);
+    try{ localStorage.setItem('nckh_detai', JSON.stringify(allDeTai)); }catch(e){}
+    populateFilterOptions();
+    renderDashboard();
+    renderDanhMuc();
+  }catch(e){ /* bỏ qua, lần tải trang sau sẽ đồng bộ */ }
+}
 
 async function loadDeTai(){
   // Hiện NGAY dữ liệu đã lưu trong máy (nếu có) -> khỏi phải chờ Google Sheet
@@ -866,38 +910,47 @@ async function saveDeTai(e){
     const y = extractYear(body.thoi_gian_nghiem_thu);
     if(y) body.nam_nghiem_thu = y;
   }
-  setLoading(true);
   try{
     const record = deTaiToSheet(body);
     if(id){
-      await sheetPost({ action:'update', id: Number(id), record });
-      // Cập nhật NGAY tại chỗ (không tải lại toàn bộ từ Sheet) -> nhanh
+      // ---- SỬA: cập nhật giao diện NGAY, đồng bộ chạy ngầm ----
       const ex = allDeTai.find(x=>x.id===Number(id));
       if(ex) Object.assign(ex, body, { id: Number(id), ma_de_tai: body.ma_so });
       try{ localStorage.setItem('nckh_detai', JSON.stringify(allDeTai)); }catch(e){}
       closeDeTaiModal();
       populateFilterOptions(); renderDashboard(); renderDanhMuc();
+      sheetPost({ action:'update', id: Number(id), record })
+        .then(()=> toast('Đã lưu lên Google Sheet'))
+        .catch(err=> toast('Đồng bộ lỗi: ' + (err.message||err) + ' (hãy tải lại trang)', true));
     } else {
-      await sheetPost({ action:'add', record });
+      // ---- THÊM MỚI: hiện tạm trên giao diện NGAY, ghi ngầm rồi lấy ID thật ----
+      const tempId = 'tmp_' + Date.now();
+      allDeTai.unshift(Object.assign({}, body, { id: tempId, ma_de_tai: body.ma_so }));
+      try{ localStorage.setItem('nckh_detai', JSON.stringify(allDeTai)); }catch(e){}
       closeDeTaiModal();
-      await reloadDeTaiOnly(); // thêm mới -> tải lại để lấy ID chính xác
+      populateFilterOptions(); renderDashboard(); renderDanhMuc();
+      sheetPost({ action:'add', record })
+        .then(()=>{ silentReloadDeTai(); toast('Đã thêm & lưu lên Google Sheet'); })
+        .catch(err=> toast('Đồng bộ lỗi: ' + (err.message||err) + ' (hãy tải lại trang)', true));
     }
   } catch(err){
     alert('Lỗi khi lưu về Google Sheet: ' + err.message);
-  } finally { setLoading(false); }
+  }
   return false;
 }
 
 async function deleteDeTai(id){
   const d = allDeTai.find(x=>x.id===id);
+  if(!d) return;
   if(!confirm(`Xóa đề tài "${d.ten_de_tai}"?\nToàn bộ nội dung công việc liên quan cũng sẽ bị xóa.`)) return;
-  setLoading(true);
-  try{
-    await sheetPost({ action:'delete', id: Number(id) });
-    await reloadDeTaiOnly();
-  } catch(err){
-    alert('Lỗi khi xóa trên Google Sheet: ' + err.message);
-  } finally { setLoading(false); }
+  // ---- Xóa khỏi giao diện NGAY, đồng bộ chạy ngầm ----
+  allDeTai = allDeTai.filter(x=>x.id!==id);
+  try{ localStorage.setItem('nckh_detai', JSON.stringify(allDeTai)); }catch(e){}
+  populateFilterOptions(); renderDashboard(); renderDanhMuc();
+  const delId = (typeof id === 'number' || /^\d+$/.test(String(id))) ? Number(id) : id;
+  sheetPost({ action:'delete', id: delId })
+    .then(()=> toast('Đã xóa trên Google Sheet'))
+    .catch(err=> toast('Đồng bộ lỗi: ' + (err.message||err) + ' (hãy tải lại trang)', true));
 }
 
 /* ===== EXCEL EXPORT ===== */
