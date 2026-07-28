@@ -555,15 +555,15 @@ function renderReminders(){
   const box = document.getElementById('reminderBox');
   if(!box) return;
   const today = new Date(); today.setHours(0,0,0,0);
+  const doneMa = new Set(allDeTai.filter(d=>d.tinh_trang==='Đã nghiệm thu').map(d=>String(d.ma_so||'').trim()));
   const rows = [];
   allNoiDung.forEach(n=>{
-    const de = allDeTai.find(x=>x.id===n.de_tai_id);
-    if(de && de.tinh_trang === 'Đã nghiệm thu') return; // đề tài đã nghiệm thu -> coi như đã xong
+    if(n.ma_so && doneMa.has(String(n.ma_so).trim())) return; // đề tài đã nghiệm thu -> bỏ
     const end = parseVNDate(n.thoi_gian_ket_thuc);
     if(!end) return;
     const days = Math.round((end - today)/86400000);
     if(days <= REMINDER_LEAD_DAYS){
-      rows.push({ n, days, deLabel: de ? (de.ma_de_tai+' — '+de.ten_de_tai) : ('Đề tài #'+n.de_tai_id) });
+      rows.push({ n, days, deLabel: n.ten_de_tai || ('Đề tài ' + (n.de_tai_id||'')) });
     }
   });
   rows.sort((a,b)=>a.days-b.days);
@@ -949,16 +949,14 @@ async function loadAllNoiDung(){
   try{
     const r = await fetch(SHEET_API + '?entity=noidung&action=list');
     const j = await r.json();
-    allNoiDung = (j.data || []).map(x => ({
-      ...x,
-      id: Number(x.ID) || x.ID,
-      de_tai_id: (x.de_tai_id === '' || x.de_tai_id == null) ? null : Number(x.de_tai_id)
-    }));
+    allNoiDung = (j.data || []).map(x => ({ ...x, id: Number(x.id) || x.id }));
   }catch(e){ allNoiDung = []; }
 }
 
 function renderNoiDungFor(deTaiId){
-  const items = allNoiDung.filter(n => n.de_tai_id === deTaiId);
+  const de = allDeTai.find(x => x.id === deTaiId);
+  const ma = de ? String(de.ma_so || '').trim() : '';
+  const items = allNoiDung.filter(n => ma && String(n.ma_so || '').trim() === ma);
   noiDungCache[deTaiId] = items;
   const total = items.length;
   const done = items.filter(n=>n.tien_do==='Hoàn thành').length;
@@ -1065,11 +1063,7 @@ async function loadBaiBao(){
   try{
     const r = await fetch(SHEET_API + '?entity=baibao&action=list');
     const j = await r.json();
-    allBaiBao = (j.data || []).map(x => ({
-      ...x,
-      id: Number(x.ID) || x.ID,
-      de_tai_id: (x.de_tai_id === '' || x.de_tai_id == null) ? null : Number(x.de_tai_id)
-    }));
+    allBaiBao = (j.data || []).map(x => ({ ...x, id: Number(x.id) || x.id }));
   }catch(e){ allBaiBao = []; }
   const bbDeTaiSelect = document.getElementById('bb_detaiid');
   bbDeTaiSelect.innerHTML = '<option value="">-- Không liên kết đề tài --</option>' +
@@ -1121,7 +1115,7 @@ function renderBaiBao(){
   document.getElementById('baiBaoTbody').innerHTML = list.map(x=>`
     <tr>
       <td class="ten-cell">${x.ten_bai_bao||''}</td>
-      <td>${x.de_tai_id ? `<span class="badge badge-trienkhai" style="cursor:pointer" onclick="goToDeTai(${x.de_tai_id})">${getDeTaiLabel(x.de_tai_id)}</span>` : '<span class="muted">—</span>'}</td>
+      <td>${x.ten_de_tai ? `<span class="badge badge-trienkhai" title="${String(x.ten_de_tai).replace(/"/g,'')}">${String(x.ten_de_tai).length>40 ? String(x.ten_de_tai).slice(0,40)+'…' : x.ten_de_tai}</span>` : '<span class="muted">—</span>'}</td>
       <td>${x.tac_gia||''}</td>
       <td>${x.vai_tro||''}</td>
       <td>${x.tap_chi||''}</td>
@@ -1204,7 +1198,7 @@ async function deleteBaiBao(id){
 function exportBaiBaoExcel(){
   const list = getBaiBaoFiltered();
   const rows = list.map(x=>({
-    'Tên bài báo': x.ten_bai_bao, 'Đề tài liên quan': getDeTaiLabel(x.de_tai_id), 'Tác giả': x.tac_gia, 'Vai trò': x.vai_tro,
+    'Tên bài báo': x.ten_bai_bao, 'Đề tài liên quan': x.ten_de_tai || '', 'Tác giả': x.tac_gia, 'Vai trò': x.vai_tro,
     'Tạp chí': x.tap_chi, 'Ngày đăng': x.ngay_dang, 'Phân loại': x.phan_loai, 'Năm': x.nam, 'Link': x.link, 'Ghi chú': x.ghi_chu
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -1221,7 +1215,7 @@ async function loadSinhVien(){
   try{
     const r = await fetch(SHEET_API + '?entity=sinhvien&action=list');
     const j = await r.json();
-    allSinhVien = (j.data || []).map(x => ({ ...x, id: Number(x.ID) || x.ID }));
+    allSinhVien = (j.data || []).map(x => ({ ...x, id: Number(x.id) || x.id }));
   }catch(e){ allSinhVien = []; }
   const nams = [...new Set(allSinhVien.map(x=>x.nam).filter(Boolean))].sort((a,b)=>b-a);
   document.getElementById('svNam').innerHTML = '<option value="">-- Năm --</option>' + nams.map(n=>`<option>${n}</option>`).join('');
@@ -1348,7 +1342,7 @@ async function loadShkh(){
   try{
     const r = await fetch(SHEET_API + '?entity=shkh&action=list');
     const j = await r.json();
-    allShkh = (j.data || []).map(x => ({ ...x, id: Number(x.ID) || x.ID }));
+    allShkh = (j.data || []).map(x => ({ ...x, id: Number(x.id) || x.id }));
   }catch(e){ allShkh = []; }
   const nams = [...new Set(allShkh.map(x=>x.nam).filter(Boolean))].sort((a,b)=>b-a);
   document.getElementById('shkhNam').innerHTML = '<option value="">-- Năm --</option>' + nams.map(n=>`<option>${n}</option>`).join('');
