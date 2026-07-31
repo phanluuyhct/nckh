@@ -203,7 +203,7 @@ textarea{resize:vertical;min-height:56px}
         <table>
           <thead>
             <tr>
-              <th>Mã ĐT</th><th>Tên đề tài</th><th>Chủ nhiệm</th><th>Khoa phòng</th><th>Cấp</th>
+              <th>Mã ĐT</th><th>Tên đề tài</th><th>Chủ nhiệm</th><th>Thư ký</th><th>Thành viên</th><th>Khoa phòng</th><th>Cấp</th>
               <th>Năm KH</th><th>Năm NT</th><th>Kinh phí (tr)</th><th>Tình trạng</th><th></th>
             </tr>
           </thead>
@@ -795,7 +795,7 @@ function getFiltered(){
   const tt = document.getElementById('fTinhTrang').value;
   const nam = document.getElementById('fNam').value;
   const namNT = document.getElementById('fNamNT').value;
-  return allDeTai.filter(d=>{
+  const filtered = allDeTai.filter(d=>{
     if(statFilter === 'chua_dung' && (d.tinh_trang === 'Đã nghiệm thu' || d.tinh_trang === 'Đang triển khai')) return false;
     if(q){
       const hay = `${d.ten_de_tai||''} ${d.chu_nhiem||''} ${d.ma_so||''} ${d.ma_de_tai||''}`.toLowerCase();
@@ -810,6 +810,15 @@ function getFiltered(){
     if(namNT && String(d.nam_nghiem_thu) !== namNT) return false;
     return true;
   });
+  // Sắp xếp: Năm kế hoạch GIẢM DẦN (gần -> xa). Không có năm thì đẩy xuống cuối.
+  filtered.sort(function(a, b){
+    const ya = parseInt(extractYear(a.nam_ke_hoach), 10);
+    const yb = parseInt(extractYear(b.nam_ke_hoach), 10);
+    const na = isNaN(ya) ? -Infinity : ya;
+    const nb = isNaN(yb) ? -Infinity : yb;
+    return nb - na;
+  });
+  return filtered;
 }
 
 function renderDanhMuc(){
@@ -820,6 +829,8 @@ function renderDanhMuc(){
       <td>${d.ma_de_tai||''}</td>
       <td class="ten-cell">${d.ten_de_tai||''}<div class="muted">${d.ma_so||''}</div></td>
       <td>${d.chu_nhiem||''}</td>
+      <td>${d.thu_ky||''}</td>
+      <td>${d.thanh_vien||''}</td>
       <td>${d.khoa_phong||''}</td>
       <td>${d.cap_quan_ly||''}</td>
       <td>${d.nam_ke_hoach||''}</td>
@@ -831,7 +842,7 @@ function renderDanhMuc(){
         <button class="btn-act btn-act-del" onclick="deleteDeTai(${d.id})">Xóa</button>
       </div></td>
     </tr>
-  `).join('') || `<tr><td colspan="10" class="empty-state">Không có đề tài phù hợp bộ lọc</td></tr>`;
+  `).join('') || `<tr><td colspan="12" class="empty-state">Không có đề tài phù hợp bộ lọc</td></tr>`;
 }
 
 function resetFilters(){
@@ -930,7 +941,14 @@ async function saveDeTai(e){
       closeDeTaiModal();
       populateFilterOptions(); renderDashboard(); renderDanhMuc();
       sheetPost({ action:'add', record })
-        .then(()=>{ silentReloadDeTai(); toast('Đã thêm & lưu lên Google Sheet'); })
+        .then(async ()=>{
+          await silentReloadDeTai(); // tải lại DỮ LIỆU THẬT từ Sheet
+          // Kiểm chứng: đề tài vừa thêm có thật sự nằm trong Sheet không?
+          const landed = allDeTai.some(x =>
+            String(x.ten_de_tai||'').trim() === String(record['Tên đề tài']||'').trim());
+          if(landed) toast('Đã thêm & lưu lên Google Sheet');
+          else toast('CHƯA ghi được vào Google Sheet! Cần kiểm tra Apps Script.', true);
+        })
         .catch(err=> toast('Đồng bộ lỗi: ' + (err.message||err) + ' (hãy tải lại trang)', true));
     }
   } catch(err){
