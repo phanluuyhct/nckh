@@ -5,6 +5,66 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Danh Mục Đề Tài Khoa Học — Bệnh viện 30-4</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- [NCKH] Ô chọn đề tài có tìm kiếm (gõ không dấu) -->
+<script>
+(function(g){
+  function injectCSS(){
+    if(document.getElementById('ss-style'))return;
+    var css='.ss-wrap{position:relative}'
+      +'.ss-hidden-native{position:absolute!important;width:1px;height:1px;opacity:0;pointer-events:none}'
+      +'.ss-input{width:100%;box-sizing:border-box;cursor:text}'
+      +'.ss-list{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:99999;background:#fff;'
+      +'border:1.5px solid #d8dde6;border-radius:8px;max-height:260px;overflow:auto;box-shadow:0 10px 30px rgba(20,40,80,.18)}'
+      +'.ss-item{padding:8px 11px;font-size:13px;cursor:pointer;border-bottom:1px solid #f1f3f7;line-height:1.35}'
+      +'.ss-item:hover,.ss-item.ss-active{background:#eef1fb}'
+      +'.ss-more{padding:8px 11px;font-size:12px;color:#98a2b3;font-style:italic}';
+    var st=document.createElement('style');st.id='ss-style';st.textContent=css;document.head.appendChild(st);
+  }
+  function viNorm(s){return (s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/đ/g,'d').replace(/\s+/g,' ').trim();}
+  function makeSearchableSelect(select,options){
+    if(!select||select.__ss)return; select.__ss=true; injectCSS();
+    options=options||{}; var placeholder=options.placeholder||'Gõ từ khoá để tìm đề tài…'; var maxShow=options.maxShow||60;
+    var wrap=document.createElement('div'); wrap.className='ss-wrap';
+    select.parentNode.insertBefore(wrap,select); wrap.appendChild(select); select.classList.add('ss-hidden-native');
+    var input=document.createElement('input'); input.type='text'; input.className='ss-input'; input.placeholder=placeholder; input.autocomplete='off';
+    var list=document.createElement('div'); list.className='ss-list'; list.style.display='none';
+    wrap.appendChild(input); wrap.appendChild(list);
+    function curLabel(){var o=select.options[select.selectedIndex];return o?o.textContent:'';}
+    function syncInput(){input.value=curLabel();} syncInput();
+    var active=-1;
+    function readOpts(){return Array.prototype.map.call(select.options,function(o,i){return {i:i,label:o.textContent,norm:viNorm(o.textContent)};});}
+    function render(q){
+      var nq=viNorm(q), all=readOpts();
+      var m=nq?all.filter(function(o){return o.norm.indexOf(nq)!==-1;}):all;
+      list.innerHTML='';
+      m.slice(0,maxShow).forEach(function(o){
+        var d=document.createElement('div'); d.className='ss-item'; d.textContent=o.label; d.dataset.i=o.i;
+        d.addEventListener('mousedown',function(e){e.preventDefault();choose(o.i);}); list.appendChild(d);
+      });
+      if(m.length>maxShow){var mo=document.createElement('div');mo.className='ss-more';mo.textContent='… còn '+(m.length-maxShow)+' kết quả, gõ thêm để thu hẹp';list.appendChild(mo);}
+      if(!m.length){var no=document.createElement('div');no.className='ss-more';no.textContent='Không tìm thấy đề tài phù hợp';list.appendChild(no);}
+      list.style.display='block'; active=-1;
+    }
+    function choose(i){select.selectedIndex=i;select.dispatchEvent(new Event('change',{bubbles:true}));syncInput();list.style.display='none';}
+    function items(){return Array.prototype.filter.call(list.children,function(c){return c.classList.contains('ss-item');});}
+    input.addEventListener('focus',function(){render('');input.select();});
+    input.addEventListener('input',function(){render(input.value);});
+    input.addEventListener('keydown',function(e){
+      var its=items();
+      if(e.key==='ArrowDown'){active=Math.min(active+1,its.length-1);e.preventDefault();}
+      else if(e.key==='ArrowUp'){active=Math.max(active-1,0);e.preventDefault();}
+      else if(e.key==='Enter'){if(active>=0&&its[active]){e.preventDefault();choose(+its[active].dataset.i);}return;}
+      else if(e.key==='Escape'){list.style.display='none';syncInput();return;}
+      else return;
+      its.forEach(function(it,idx){it.classList.toggle('ss-active',idx===active);});
+      if(its[active])its[active].scrollIntoView({block:'nearest'});
+    });
+    document.addEventListener('click',function(e){if(!wrap.contains(e.target)){list.style.display='none';syncInput();}});
+    select.addEventListener('change',syncInput);
+  }
+  g.makeSearchableSelect=makeSearchableSelect;
+})(window);
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -124,9 +184,36 @@ textarea{resize:vertical;min-height:56px}
 .loading.show{display:flex}
 .spinner{width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--purple);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* [NCKH] Phân quyền đăng nhập */
+#authGate{position:fixed;inset:0;z-index:100000;background:linear-gradient(135deg,#1f4e79,#12897f);display:flex;align-items:center;justify-content:center}
+#authGate .box{background:#fff;border-radius:16px;padding:26px 24px;width:340px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center}
+#authGate h3{margin:6px 0 2px;color:#1f4e79;font-size:18px}
+#authGate .sub{margin:0 0 16px;color:#5b6675;font-size:13px}
+#authGate input{width:100%;box-sizing:border-box;margin-bottom:10px;padding:11px 12px;border:1.5px solid #cbd5e1;border-radius:8px;font-size:14px}
+#authGate button{width:100%;padding:11px;border:0;border-radius:8px;background:#1f4e79;color:#fff;font-weight:700;font-size:14px;cursor:pointer}
+#authGate .err{color:#c0392b;font-size:13px;min-height:18px;margin-top:6px}
+#authGate .note{margin-top:12px;font-size:11.5px;color:#94a3b8;line-height:1.5}
+#authBar{display:none;align-items:center;gap:10px;justify-content:flex-end;font-size:12.5px;color:#fff;padding:5px 16px;background:#173a5c}
+#authBar button{background:#fff;color:#1f4e79;border:0;border-radius:6px;padding:3px 12px;font-size:12px;font-weight:700;cursor:pointer}
+body.role-viewer .btn-primary,
+body.role-viewer .btn-act-edit,
+body.role-viewer .btn-act-del{display:none!important}
 </style>
 </head>
 <body>
+<!-- [NCKH] Màn hình đăng nhập phân quyền -->
+<div id="authGate">
+  <div class="box">
+    <div style="font-size:34px">🔬</div>
+    <h3>Quản lý NCKH — Bệnh viện 30-4</h3>
+    <div class="sub">Nhập mật khẩu để tiếp tục</div>
+    <input type="password" id="authPw" placeholder="Mật khẩu" autocomplete="off">
+    <button id="authBtn">Đăng nhập</button>
+    <div class="err" id="authErr"></div>
+    <div class="note">Người tra cứu: dùng mật khẩu xem &nbsp;·&nbsp; Nhân viên: dùng mật khẩu nhập liệu</div>
+  </div>
+</div>
+<div id="authBar">Vai trò: <b id="authRole"></b> <button onclick="nckhLogout()">Đăng xuất</button></div>
 
 <div class="header">
   <div class="header-top">
@@ -496,6 +583,8 @@ function deTaiToSheet(b){
 // Gửi POST kiểu text/plain để tránh lỗi CORS preflight với Apps Script
 async function sheetPost(payload){
   try{
+    // [NCKH] Đính kèm mật khẩu nhân viên để backend cho phép ghi
+    if(window.NCKH_PW && payload && payload.action !== 'login') payload = Object.assign({}, payload, { password: window.NCKH_PW });
     const r = await fetch(SHEET_API, { method:'POST', body: JSON.stringify(payload) });
     // Đọc dạng text trước — Apps Script đôi khi trả về TRANG HTML (đăng nhập/lỗi/redirect)
     // dù đã ghi xong. Nếu ép r.json() ngay sẽ vỡ: "Unexpected token '<', <!DOCTYPE ...".
@@ -1162,6 +1251,7 @@ async function loadBaiBao(){
   const bbDeTaiSelect = document.getElementById('bb_detaiid');
   bbDeTaiSelect.innerHTML = '<option value="">-- Không liên kết đề tài --</option>' +
     allDeTai.map(d=>`<option value="${d.id}">${d.ma_de_tai} — ${d.ten_de_tai}</option>`).join('');
+  makeSearchableSelect(bbDeTaiSelect); // [NCKH] biến ô đề tài thành ô gõ-để-tìm
   const nams = [...new Set(allBaiBao.map(x=>x.nam).filter(Boolean))].sort((a,b)=>b-a);
   document.getElementById('bbNam').innerHTML = '<option value="">-- Năm --</option>' + nams.map(n=>`<option>${n}</option>`).join('');
   renderBaiBao();
@@ -1205,7 +1295,12 @@ function getBaiBaoFiltered(){
 
 function renderBaiBao(){
   const list = getBaiBaoFiltered();
-  document.getElementById('bbCountInfo').textContent = `Hiển thị ${list.length} / ${allBaiBao.length} bài báo`;
+  const bbQt = list.filter(x=>x.phan_loai==='Quốc tế').length;
+  const bbTn = list.filter(x=>x.phan_loai==='Trong nước').length;
+  document.getElementById('bbCountInfo').innerHTML =
+    `Hiển thị <b>${list.length}</b> / ${allBaiBao.length} bài báo`
+    + ` &nbsp;·&nbsp; <span style="color:#1f4e79;font-weight:700">🌐 Quốc tế: ${bbQt}</span>`
+    + ` &nbsp;·&nbsp; <span style="color:#0f6b5f;font-weight:700">🏠 Trong nước: ${bbTn}</span>`;
   document.getElementById('baiBaoTbody').innerHTML = list.map(x=>`
     <tr>
       <td class="ten-cell">${x.ten_bai_bao||''}</td>
@@ -1251,6 +1346,7 @@ function openBaiBaoModal(id){
   } else {
     document.getElementById('modalBaiBaoTitle').innerHTML = `Thêm bài báo mới <button class="modal-close" onclick="closeBaiBaoModal()">✕</button>`;
   }
+  document.getElementById('bb_detaiid').dispatchEvent(new Event('change')); // [NCKH] đồng bộ ô tìm đề tài
   document.getElementById('modalBaiBao').classList.add('show');
 }
 function closeBaiBaoModal(){ document.getElementById('modalBaiBao').classList.remove('show'); }
@@ -1590,8 +1686,54 @@ document.getElementById('dt_tgnghiemthu').addEventListener('input', function(){
   }
 });
 
+/* ================= [NCKH] PHÂN QUYỀN ĐĂNG NHẬP ================= */
+var VIEWER_PW = 'bv304xem';   // <<< ĐỔI mật khẩu NGƯỜI XEM (tra cứu) tại đây
+function nckhApplyRole(role){
+  window.NCKH_ROLE = role;
+  document.body.classList.remove('role-viewer','role-editor');
+  document.body.classList.add(role==='editor' ? 'role-editor' : 'role-viewer');
+  var bar = document.getElementById('authBar');
+  if(bar){ bar.style.display='flex';
+    document.getElementById('authRole').textContent = (role==='editor' ? 'Nhân viên (nhập liệu)' : 'Người xem (tra cứu)'); }
+  document.getElementById('authGate').style.display='none';
+}
+function nckhLogout(){
+  try{ sessionStorage.removeItem('nckh_role'); sessionStorage.removeItem('nckh_pw'); }catch(e){}
+  window.NCKH_PW = null; location.reload();
+}
+async function nckhLogin(){
+  var pw = document.getElementById('authPw').value;
+  var err = document.getElementById('authErr'); err.textContent='';
+  if(!pw){ err.textContent='Vui lòng nhập mật khẩu'; return; }
+  if(pw === VIEWER_PW){
+    try{ sessionStorage.setItem('nckh_role','viewer'); }catch(e){}
+    nckhApplyRole('viewer'); return;
+  }
+  err.textContent='Đang kiểm tra…';
+  try{
+    var res = await sheetPost({ action:'login', password: pw });
+    if(res && res.ok && res.role === 'editor'){
+      window.NCKH_PW = pw;
+      try{ sessionStorage.setItem('nckh_role','editor'); sessionStorage.setItem('nckh_pw', pw); }catch(e){}
+      nckhApplyRole('editor'); return;
+    }
+  }catch(e){}
+  err.textContent='Sai mật khẩu';
+}
+(function initAuth(){
+  var btn=document.getElementById('authBtn'), inp=document.getElementById('authPw');
+  if(btn) btn.addEventListener('click', nckhLogin);
+  if(inp) inp.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); nckhLogin(); } });
+  try{
+    var role=sessionStorage.getItem('nckh_role');
+    if(role==='editor'){ window.NCKH_PW = sessionStorage.getItem('nckh_pw')||null; nckhApplyRole('editor'); }
+    else if(role==='viewer'){ nckhApplyRole('viewer'); }
+  }catch(e){}
+})();
+
 loadDeTai();
 </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"f58945a29d14497db6a674e8ad23058b","r":1}' crossorigin="anonymous"></script>
 <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"f58945a29d14497db6a674e8ad23058b","r":1}' crossorigin="anonymous"></script>
 </body>
 </html>
