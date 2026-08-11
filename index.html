@@ -129,8 +129,8 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--te
 .btn-sm{padding:5px 12px;font-size:12px}
 
 table{width:100%;border-collapse:collapse;font-size:13px;background:white}
-.table-wrap{overflow-x:auto;border-radius:12px;border:1px solid var(--border)}
-th{background:var(--purple);color:white;padding:10px 12px;text-align:left;font-size:12px;white-space:nowrap;position:sticky;top:0}
+.table-wrap{overflow:auto;max-height:72vh;border-radius:12px;border:1px solid var(--border)}
+th{background:var(--purple);color:white;padding:10px 12px;text-align:left;font-size:12px;white-space:nowrap;position:sticky;top:0;z-index:3}
 td{padding:10px 12px;border-bottom:1px solid #dce9f8;vertical-align:top}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#f4f9fe}
@@ -144,7 +144,7 @@ tr:hover td{background:#f4f9fe}
 #tab-baibao td:last-child,#tab-baibao th:last-child{position:sticky;right:0;z-index:2;min-width:96px}
 #tab-baibao td:last-child{background:#fff;box-shadow:-7px 0 8px -6px rgba(0,0,0,.18)}
 #tab-baibao tr:hover td:last-child{background:#f4f9fe}
-#tab-baibao th:last-child{background:var(--purple)}
+#tab-baibao th:last-child{background:var(--purple);z-index:5}
 .muted{color:var(--muted);font-size:12px}
 
 .badge{display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}
@@ -1448,6 +1448,13 @@ async function loadSinhVien(){
   renderExtraStats();
 }
 
+// [NCKH] Đổi "MM/YYYY" (hoặc năm) -> số để sắp xếp theo thời gian
+function svTimeVal(x){
+  const s=String(x.tg_bat_dau||'').trim();
+  let m=s.match(/(\d{1,2})\/(\d{4})/); if(m) return (+m[2])*100+(+m[1]);
+  m=s.match(/(\d{4})/); if(m) return (+m[1])*100;
+  const y=parseInt(x.nam,10); return isNaN(y)?0:y*100;
+}
 function getSinhVienFiltered(){
   const q = document.getElementById('svSearch').value.trim().toLowerCase();
   const nam = document.getElementById('svNam').value;
@@ -1458,7 +1465,7 @@ function getSinhVienFiltered(){
     }
     if(nam && String(x.nam) !== nam) return false;
     return true;
-  });
+  }).sort((a,b)=> svTimeVal(b) - svTimeVal(a)); // thời gian mới nhất lên đầu
 }
 
 function renderSinhVien(){
@@ -1587,7 +1594,7 @@ function getShkhFiltered(){
     if(ht && x.hinh_thuc !== ht) return false;
     if(nam && String(x.nam) !== nam) return false;
     return true;
-  });
+  }).sort((a,b)=> bbDateVal(b.thoi_gian) - bbDateVal(a.thoi_gian)); // ngày mới nhất lên đầu
 }
 
 function renderShkh(){
