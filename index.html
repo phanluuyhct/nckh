@@ -135,10 +135,16 @@ td{padding:10px 12px;border-bottom:1px solid #dce9f8;vertical-align:top}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#f4f9fe}
 .ten-cell{max-width:320px;font-weight:600}
-#baiBaoTbody .ten-cell{max-width:360px;min-width:260px}
-#tab-baibao td:nth-child(2),#tab-baibao th:nth-child(2){min-width:160px;max-width:220px}
+#baiBaoTbody .ten-cell{max-width:320px;min-width:240px}
+#tab-baibao td:nth-child(2),#tab-baibao th:nth-child(2){min-width:150px;max-width:200px}
 #tab-baibao td:nth-child(2) .badge{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
-#tab-baibao td:nth-child(3),#tab-baibao th:nth-child(3){min-width:200px}
+#tab-baibao td:nth-child(3),#tab-baibao th:nth-child(3){min-width:190px}
+#tab-baibao td:nth-child(5),#tab-baibao th:nth-child(5){max-width:170px}
+/* Ghim cột Sửa/Xóa cố định bên phải để luôn hiện */
+#tab-baibao td:last-child,#tab-baibao th:last-child{position:sticky;right:0;z-index:2;min-width:96px}
+#tab-baibao td:last-child{background:#fff;box-shadow:-7px 0 8px -6px rgba(0,0,0,.18)}
+#tab-baibao tr:hover td:last-child{background:#f4f9fe}
+#tab-baibao th:last-child{background:var(--purple)}
 .muted{color:var(--muted);font-size:12px}
 
 .badge{display:inline-block;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap}
