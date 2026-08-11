@@ -1304,7 +1304,7 @@ function renderBaiBao(){
   document.getElementById('baiBaoTbody').innerHTML = list.map(x=>`
     <tr>
       <td class="ten-cell">${x.ten_bai_bao||''}</td>
-      <td>${x.ten_de_tai ? `<span class="badge badge-trienkhai" title="${String(x.ten_de_tai).replace(/"/g,'')}">${String(x.ten_de_tai).length>40 ? String(x.ten_de_tai).slice(0,40)+'…' : x.ten_de_tai}</span>` : '<span class="muted">—</span>'}</td>
+      <td>${(()=>{ const _nm = x.ten_de_tai || ((allDeTai.find(a=>String(a.id)===String(x.de_tai_id))||{}).ten_de_tai) || ''; return _nm ? `<span class="badge badge-trienkhai" title="${String(_nm).replace(/"/g,'')}">${String(_nm).length>40 ? String(_nm).slice(0,40)+'…' : _nm}</span>` : '<span class="muted">—</span>'; })()}</td>
       <td>${x.tac_gia||''}</td>
       <td>${x.vai_tro||''}</td>
       <td>${x.tap_chi||''}</td>
@@ -1366,6 +1366,12 @@ async function saveBaiBao(e){
     link: document.getElementById('bb_link').value,
     ghi_chu: document.getElementById('bb_ghichu').value,
   };
+  // [NCKH] Điền sẵn tên/mã/cấp/năm của đề tài liên quan để hiển thị & lưu vào Sheet
+  const _dt = allDeTai.find(d => String(d.id) === String(body.de_tai_id));
+  body.ten_de_tai   = _dt ? (_dt.ten_de_tai || '')  : '';
+  body.ma_so        = _dt ? (_dt.ma_de_tai || _dt.ma_so || '') : '';
+  body.cap          = _dt ? (_dt.cap_quan_ly || '') : '';
+  body.nam_ke_hoach = _dt ? (_dt.nam_ke_hoach || '') : '';
   setLoading(true);
   try{
     if(id){ await sheetPost({ entity:'baibao', action:'update', id:Number(id), record: body }); }
