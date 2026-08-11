@@ -1183,7 +1183,8 @@ function openNoiDungModal(id, deTaiId){
   document.getElementById('nd_id').value = id || '';
   document.getElementById('nd_detaiid').value = deTaiId;
   if(id){
-    const n = (noiDungCache[deTaiId]||[]).find(x=>x.id===id);
+    const n = (noiDungCache[deTaiId]||[]).find(x=>String(x.id)===String(id));
+    if(!n){ alert('Không tìm thấy nội dung để sửa (ID '+id+')'); return; }
     document.getElementById('modalNoiDungTitle').innerHTML = `Sửa nội dung công việc <button class="modal-close" onclick="closeNoiDungModal()">✕</button>`;
     document.getElementById('nd_noidung').value = n.noi_dung||'';
     document.getElementById('nd_sohdkv').value = n.so_hdkv||'';
